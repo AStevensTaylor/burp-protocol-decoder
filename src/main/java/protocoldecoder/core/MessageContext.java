@@ -37,8 +37,11 @@ public final class MessageContext {
     private final String webSocketDirection;
     private final byte[] webSocketPayload;
     private final boolean truncated;
+    private final java.util.function.Supplier<WebSocketWindow> webSocketWindowSource;
 
     private volatile String exchangeKey;
+    private volatile boolean webSocketWindowLoaded;
+    private volatile WebSocketWindow webSocketWindow;
     private volatile String contentFingerprint;
 
     private MessageContext(Builder b) {
@@ -75,6 +78,7 @@ public final class MessageContext {
         this.webSocketDirection = b.webSocketDirection;
         this.webSocketPayload = b.webSocketPayload;
         this.truncated = b.truncated;
+        this.webSocketWindowSource = b.webSocketWindow;
     }
 
     public static Builder builder(MessageKind kind) {
@@ -102,6 +106,30 @@ public final class MessageContext {
     public String webSocketDirection() { return webSocketDirection; }
     /** True if a body was cut short because it exceeded the configured size limit. */
     public boolean truncated() { return truncated; }
+
+    /**
+     * Neighbouring same-direction messages of the same WebSocket connection, or null when unknown (not a WebSocket
+     * message, or the host can't tell, e.g. Repeater). Loaded lazily on first call, which may be slow: only call it
+     * when the displayed payload can't be decoded on its own.
+     */
+    public WebSocketWindow webSocketWindow() {
+        if (webSocketWindowSource == null) return null;
+        if (!webSocketWindowLoaded) {
+            synchronized (this) {
+                if (!webSocketWindowLoaded) {
+                    WebSocketWindow w;
+                    try {
+                        w = webSocketWindowSource.get();
+                    } catch (RuntimeException e) {
+                        w = null;
+                    }
+                    webSocketWindow = w;
+                    webSocketWindowLoaded = true;
+                }
+            }
+        }
+        return webSocketWindow;
+    }
 
     /** Headers of the displayed message (the upgrade request's headers for WebSocket messages). */
     public List<Header> headers() {
@@ -307,6 +335,7 @@ public final class MessageContext {
         b.webSocketDirection = webSocketDirection;
         b.webSocketPayload = webSocketPayload;
         b.truncated = truncated;
+        b.webSocketWindow = webSocketWindowSource;
         return b.build();
     }
 
@@ -325,6 +354,7 @@ public final class MessageContext {
         private String webSocketDirection;
         private byte[] webSocketPayload;
         private boolean truncated;
+        private java.util.function.Supplier<WebSocketWindow> webSocketWindow;
 
         private Builder(MessageKind kind) {
             this.kind = kind;
@@ -363,6 +393,9 @@ public final class MessageContext {
         }
 
         public Builder truncated(boolean v) { this.truncated = v; return this; }
+
+        /** Lazy source of neighbouring WebSocket messages; see {@link MessageContext#webSocketWindow()}. */
+        public Builder webSocketWindow(java.util.function.Supplier<WebSocketWindow> v) { this.webSocketWindow = v; return this; }
 
         public MessageContext build() {
             return new MessageContext(this);

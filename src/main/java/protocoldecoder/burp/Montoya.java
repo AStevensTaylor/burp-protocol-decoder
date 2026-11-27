@@ -39,13 +39,21 @@ public final class Montoya {
     }
 
     public static MessageContext fromWebSocket(WebSocketMessage msg, int maxBytes) {
+        return fromWebSocket(msg, maxBytes, null);
+    }
+
+    /** As {@link #fromWebSocket(WebSocketMessage, int)}, with neighbouring messages looked up through {@code windows}. */
+    static MessageContext fromWebSocket(WebSocketMessage msg, int maxBytes, WebSocketWindows windows) {
         if (msg == null) return null;
         MessageContext.Builder b = MessageContext.builder(MessageKind.WEBSOCKET);
         boolean[] truncated = {false};
         if (msg.upgradeRequest() != null) fillRequest(b, msg.upgradeRequest(), maxBytes, truncated);
-        byte[] payload = msg.payload() == null ? new byte[0] : msg.payload().getBytes();
-        b.webSocket(msg.direction() == null ? null : msg.direction().name(), cap(payload, maxBytes, truncated));
-        return b.truncated(truncated[0]).build();
+        byte[] raw = msg.payload() == null ? new byte[0] : msg.payload().getBytes();
+        boolean[] payloadCut = {false};
+        byte[] payload = cap(raw, maxBytes, payloadCut);
+        b.webSocket(msg.direction() == null ? null : msg.direction().name(), payload);
+        if (windows != null) b.webSocketWindow(windows.forMessage(msg, payload, payloadCut[0]));
+        return b.truncated(truncated[0] || payloadCut[0]).build();
     }
 
     /** Applies an edit to a request (body, query, headers). Content-Length is updated by Burp. */
@@ -73,11 +81,19 @@ public final class Montoya {
 
     /** A WebSocket message seen by a proxy handler (upgrade request may be null). */
     public static MessageContext fromWebSocket(HttpRequest upgrade, String direction, byte[] payload, int maxBytes) {
+        return fromWebSocket(upgrade, direction, payload, maxBytes, null);
+    }
+
+    /** As above, with a known window of neighbouring messages (whose current entry is {@code payload}). */
+    static MessageContext fromWebSocket(HttpRequest upgrade, String direction, byte[] payload, int maxBytes,
+                                        protocoldecoder.core.WebSocketWindow window) {
         MessageContext.Builder b = MessageContext.builder(MessageKind.WEBSOCKET);
         boolean[] truncated = {false};
         if (upgrade != null) fillRequest(b, upgrade, maxBytes, truncated);
-        b.webSocket(direction, cap(payload == null ? new byte[0] : payload, maxBytes, truncated));
-        return b.truncated(truncated[0]).build();
+        boolean[] payloadCut = {false};
+        b.webSocket(direction, cap(payload == null ? new byte[0] : payload, maxBytes, payloadCut));
+        if (window != null && !payloadCut[0]) b.webSocketWindow(() -> window);
+        return b.truncated(truncated[0] || payloadCut[0]).build();
     }
 
     private static void fillRequest(MessageContext.Builder b, HttpRequest req, int maxBytes, boolean[] truncated) {

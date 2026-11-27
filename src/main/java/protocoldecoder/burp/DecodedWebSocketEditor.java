@@ -16,10 +16,12 @@ final class DecodedWebSocketEditor implements ExtensionProvidedWebSocketMessageE
 
     private final App app;
     private final MessageDecodePanel panel;
+    private final WebSocketWindows windows;
     private WebSocketMessage current;
 
-    DecodedWebSocketEditor(App app, UiEnv env, boolean editable) {
+    DecodedWebSocketEditor(App app, UiEnv env, boolean editable, WebSocketWindows windows) {
         this.app = app;
+        this.windows = windows;
         this.panel = new MessageDecodePanel(app, env, editable);
         env.theme(panel);
     }
@@ -34,7 +36,7 @@ final class DecodedWebSocketEditor implements ExtensionProvidedWebSocketMessageE
     @Override
     public void setMessage(WebSocketMessage message) {
         this.current = message;
-        panel.setMessage(Montoya.fromWebSocket(message, app.settings().maxMatchBytes));
+        panel.setMessage(Montoya.fromWebSocket(message, app.settings().maxMatchBytes, windows));
     }
 
     @Override
