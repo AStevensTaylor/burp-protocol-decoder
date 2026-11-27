@@ -48,6 +48,15 @@ public final class Montoya {
         return b.truncated(truncated[0]).build();
     }
 
+    /** A WebSocket message seen by a proxy handler (upgrade request may be null). */
+    public static MessageContext fromWebSocket(HttpRequest upgrade, String direction, byte[] payload, int maxBytes) {
+        MessageContext.Builder b = MessageContext.builder(MessageKind.WEBSOCKET);
+        boolean[] truncated = {false};
+        if (upgrade != null) fillRequest(b, upgrade, maxBytes, truncated);
+        b.webSocket(direction, cap(payload == null ? new byte[0] : payload, maxBytes, truncated));
+        return b.truncated(truncated[0]).build();
+    }
+
     private static void fillRequest(MessageContext.Builder b, HttpRequest req, int maxBytes, boolean[] truncated) {
         b.method(safe(req::method));
         String url = safe(req::url);

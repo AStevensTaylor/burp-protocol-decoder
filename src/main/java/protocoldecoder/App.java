@@ -1,7 +1,40 @@
 package protocoldecoder;
 
+import protocoldecoder.builtin.actioncable.ActionCableDecoder;
+import protocoldecoder.builtin.aspnetajax.AspNetAjaxDecoder;
+import protocoldecoder.builtin.aspnetajax.AspNetAjaxScanner;
+import protocoldecoder.builtin.graphql.GraphQlDecoder;
+import protocoldecoder.builtin.graphql.GraphQlScanner;
+import protocoldecoder.builtin.graphql.TrpcDecoder;
+import protocoldecoder.builtin.graphql.TrpcScanner;
+import protocoldecoder.builtin.grpc.GrpcDecoder;
+import protocoldecoder.builtin.grpc.GrpcScanner;
+import protocoldecoder.builtin.livewire.LivewireDecoder;
+import protocoldecoder.builtin.nextjs.NextJsDecoder;
+import protocoldecoder.builtin.saml.SamlDecoder;
+import protocoldecoder.builtin.saml.SamlScanner;
+import protocoldecoder.builtin.serialized.SerializedObjectDecoder;
+import protocoldecoder.builtin.serialized.SerializedObjectScanner;
+import protocoldecoder.builtin.turbo.TurboDecoder;
+import protocoldecoder.builtin.viewstate.ViewStateDecoder;
+import protocoldecoder.builtin.viewstate.ViewStateScanner;
+import protocoldecoder.builtin.batchexecute.BatchExecuteDecoder;
+import protocoldecoder.builtin.firebase.FirebaseScanner;
+import protocoldecoder.builtin.batchexecute.BatchExecuteScanner;
+import protocoldecoder.builtin.nextjs.NextJsScanner;
+import protocoldecoder.builtin.livewire.LivewireScanner;
+import protocoldecoder.builtin.turbo.TurboScanner;
+import protocoldecoder.builtin.actioncable.ActionCableScanner;
 import protocoldecoder.builtin.blazor.BlazorDecoder;
+import protocoldecoder.builtin.firebase.FirebaseDecoder;
+import protocoldecoder.builtin.phoenix.PhoenixDecoder;
+import protocoldecoder.builtin.phoenix.PhoenixScanner;
+import protocoldecoder.builtin.socketio.SocketIoDecoder;
+import protocoldecoder.builtin.socketio.SocketIoScanner;
+import protocoldecoder.builtin.blazor.BlazorScanner;
 import protocoldecoder.builtin.devexpress.DevExpressDecoder;
+import protocoldecoder.builtin.devexpress.DevExpressScanner;
+import protocoldecoder.builtin.newrelic.NewRelicScanner;
 import protocoldecoder.builtin.newrelic.NewRelicDecoder;
 import protocoldecoder.core.DecoderEngine;
 import protocoldecoder.core.DecoderRegistry;
@@ -11,6 +44,7 @@ import protocoldecoder.persistence.ConfigStore;
 import protocoldecoder.persistence.Settings;
 import protocoldecoder.rules.Rule;
 import protocoldecoder.rules.RuleSet;
+import protocoldecoder.scan.ScanEngine;
 import protocoldecoder.script.ScriptDecoder;
 import protocoldecoder.script.ScriptDefinition;
 import protocoldecoder.script.ScriptSandbox;
@@ -31,6 +65,7 @@ public final class App implements AutoCloseable {
     private final OverrideStore overrides = new OverrideStore();
     private final DecoderEngine engine = new DecoderEngine(registry, rules, overrides);
     private final ScriptSandbox sandbox = new ScriptSandbox();
+    private final ScanEngine scanEngine = new ScanEngine(engine);
     private final ConfigStore config;
     private final Consumer<String> output;
     private final Consumer<String> errors;
@@ -49,11 +84,28 @@ public final class App implements AutoCloseable {
         this.errors = errors;
         this.settings = config.loadSettings();
         engine.setErrorLog(errors);
+        scanEngine.setErrorLog(errors);
         sandbox.setLogSink(errors);
 
+        // Registration order breaks confidence ties (earlier wins).
         registry.register(new DevExpressDecoder());
+        registry.register(new AspNetAjaxDecoder());
+        registry.register(new ViewStateDecoder());
         registry.register(new NewRelicDecoder());
         registry.register(new BlazorDecoder());
+        registry.register(new NextJsDecoder());
+        registry.register(new LivewireDecoder());
+        registry.register(new TurboDecoder());
+        registry.register(new ActionCableDecoder());
+        registry.register(new SocketIoDecoder());
+        registry.register(new PhoenixDecoder());
+        registry.register(new GraphQlDecoder());
+        registry.register(new TrpcDecoder());
+        registry.register(new GrpcDecoder());
+        registry.register(new SamlDecoder());
+        registry.register(new FirebaseDecoder());
+        registry.register(new BatchExecuteDecoder());
+        registry.register(new SerializedObjectDecoder());
         for (ScriptDefinition d : config.loadScripts()) {
             if (d.validate() != null || registry.byId(d.id()).isPresent()) {
                 errors.accept("Skipping saved script '" + d.id() + "': " + (d.validate() != null ? d.validate() : "duplicate id"));
@@ -64,6 +116,26 @@ public final class App implements AutoCloseable {
             if (sd.compileError() != null) errors.accept("Script '" + d.id() + "' has errors: " + sd.compileError());
             registry.register(sd);
         }
+        scanEngine.register(new DevExpressScanner());
+        scanEngine.register(new NewRelicScanner());
+        scanEngine.register(new BlazorScanner());
+        scanEngine.register(new ViewStateScanner());
+        scanEngine.register(new AspNetAjaxScanner());
+        scanEngine.register(new SocketIoScanner());
+        scanEngine.register(new PhoenixScanner());
+        scanEngine.register(new GrpcScanner());
+        scanEngine.register(new SamlScanner());
+        scanEngine.register(new GraphQlScanner());
+        scanEngine.register(new TrpcScanner());
+        scanEngine.register(new NextJsScanner());
+        scanEngine.register(new LivewireScanner());
+        scanEngine.register(new TurboScanner());
+        scanEngine.register(new ActionCableScanner());
+        scanEngine.register(new FirebaseScanner());
+        scanEngine.register(new BatchExecuteScanner());
+        scanEngine.register(new SerializedObjectScanner());
+        scanEngine.setDisabledIds(config.loadDisabledChecks());
+
         config.loadDisabled(registry);
         rules.setRules(config.loadRules());
         config.loadOverrides(overrides);
@@ -71,6 +143,7 @@ public final class App implements AutoCloseable {
         registry.addListener(() -> config.saveDisabled(registry));
         rules.addListener(() -> config.saveRules(rules));
         overrides.addListener(() -> config.saveOverrides(overrides, settings.persistOverrides));
+        scanEngine.addListener(() -> config.saveDisabledChecks(scanEngine.disabledIds()));
     }
 
     public DecoderRegistry registry() { return registry; }
@@ -78,6 +151,7 @@ public final class App implements AutoCloseable {
     public OverrideStore overrides() { return overrides; }
     public DecoderEngine engine() { return engine; }
     public ScriptSandbox sandbox() { return sandbox; }
+    public ScanEngine scanEngine() { return scanEngine; }
     public Settings settings() { return settings; }
 
     public void log(String s) { output.accept(s); }

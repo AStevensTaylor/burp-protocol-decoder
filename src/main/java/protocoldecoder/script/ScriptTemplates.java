@@ -39,7 +39,11 @@ public final class ScriptTemplates {
             SCRIPT CONTRACT
               function match(msg)   -> number 0..100 | boolean | {confidence, reason}
               function decode(msg)  -> {summary?, data?, text?, warnings?[]} | any value (shown as data)
-              Both are optional to define; a script without match() only runs via rules/overrides.
+              function passive(msg) -> [{title, severity?, confidence?, detail?, remediation?, evidence?[], evidenceIn?}]
+              Both match() and passive() are optional; a script without match() only runs via rules/overrides.
+              passive() runs in Burp's passive scanner (and on proxied WebSocket messages) when this decoder applies;
+              severity: HIGH|MEDIUM|LOW|INFORMATION, confidence: CERTAIN|FIRM|TENTATIVE, evidence: strings to highlight,
+              evidenceIn: "request"|"response" (default: the message being checked).
               throw new Error("reason") from decode() to show a decode error.
 
             THE msg OBJECT (read-only)

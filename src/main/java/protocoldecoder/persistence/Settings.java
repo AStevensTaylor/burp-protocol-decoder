@@ -15,6 +15,14 @@ public final class Settings {
     public int maxMatchBytes = 16 * 1024 * 1024;
     /** Remember manual overrides in the Burp project file. */
     public boolean persistOverrides = true;
+    /** Run protocol passive checks from Burp's passive scanner. */
+    public boolean scanPassive = true;
+    /** Run protocol active checks during active scans. */
+    public boolean scanActive = true;
+    /** Offer protocol-aware insertion points to Burp's scanner. */
+    public boolean scanInsertionPoints = true;
+    /** Run passive checks on WebSocket messages passing through the proxy. */
+    public boolean scanWebSockets = true;
 
     public SandboxLimits limits() {
         return new SandboxLimits(matchTimeoutMs, decodeTimeoutMs, maxScriptBodyBytes, maxOutputNodes);
@@ -29,6 +37,10 @@ public final class Settings {
         s.maxOutputNodes = maxOutputNodes;
         s.maxMatchBytes = maxMatchBytes;
         s.persistOverrides = persistOverrides;
+        s.scanPassive = scanPassive;
+        s.scanActive = scanActive;
+        s.scanInsertionPoints = scanInsertionPoints;
+        s.scanWebSockets = scanWebSockets;
         return s;
     }
 }

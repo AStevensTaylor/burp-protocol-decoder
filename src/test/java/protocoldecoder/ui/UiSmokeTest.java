@@ -62,12 +62,12 @@ class UiSmokeTest {
         SwingUtilities.invokeAndWait(() -> {
             assertTrue(p.view().current().summary().startsWith("Callback result #0"));
             assertTrue(p.statusText().contains("auto-detected"), p.statusText());
-            assertEquals(5, p.pickerCount()); // Automatic, DevExpress, New Relic, Blazor, Don't decode
+            assertEquals(app.registry().all().size() + 2, p.pickerCount()); // Automatic, each decoder, Don't decode
         });
         snapshot(p, "decoded-tab.png", 1100, 520);
 
         // Choosing "Don't decode" stores a manual override for this message.
-        SwingUtilities.invokeAndWait(() -> p.pick(4));
+        SwingUtilities.invokeAndWait(() -> p.pick(p.pickerCount() - 1));
         assertNotNull(app.overrides().get(m.overrideKey()));
         assertFalse(app.engine().resolve(m).hasDecoder());
     }
@@ -87,10 +87,11 @@ class UiSmokeTest {
 
     @Test
     void mainTabBuildsWithScripts() throws Exception {
+        int before = app.registry().all().size();
         assertNull(app.saveScript(null, ScriptDefinition.newFromTemplate().id("my-rpc").name("My RPC")));
         MainTab[] t = new MainTab[1];
         SwingUtilities.invokeAndWait(() -> t[0] = new MainTab(app, UiEnv.standalone()));
-        assertEquals(4, app.registry().all().size());
+        assertEquals(before + 1, app.registry().all().size());
         snapshot(t[0], "main-tab.png", 1100, 420);
         // persisted
         assertTrue(global.get("protocoldecoder.scripts").contains("my-rpc"));
