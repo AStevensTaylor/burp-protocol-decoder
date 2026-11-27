@@ -48,6 +48,29 @@ public final class Montoya {
         return b.truncated(truncated[0]).build();
     }
 
+    /** Applies an edit to a request (body, query, headers). Content-Length is updated by Burp. */
+    public static HttpRequest apply(HttpRequest r, protocoldecoder.edit.MessagePatch p) {
+        if (p == null || p.isEmpty()) return r;
+        HttpRequest out = r;
+        if (p.body() != null) out = out.withBody(burp.api.montoya.core.ByteArray.byteArray(p.body()));
+        if (p.query() != null) out = out.withPath(out.pathWithoutQuery() + (p.query().isEmpty() ? "" : "?" + p.query()));
+        for (java.util.Map.Entry<String, String> h : p.headers().entrySet()) {
+            out = out.hasHeader(h.getKey()) ? out.withUpdatedHeader(h.getKey(), h.getValue()) : out.withAddedHeader(h.getKey(), h.getValue());
+        }
+        return out;
+    }
+
+    /** Applies an edit to a response (body, headers). */
+    public static HttpResponse apply(HttpResponse r, protocoldecoder.edit.MessagePatch p) {
+        if (p == null || p.isEmpty() || r == null) return r;
+        HttpResponse out = r;
+        if (p.body() != null) out = out.withBody(burp.api.montoya.core.ByteArray.byteArray(p.body()));
+        for (java.util.Map.Entry<String, String> h : p.headers().entrySet()) {
+            out = out.hasHeader(h.getKey()) ? out.withUpdatedHeader(h.getKey(), h.getValue()) : out.withAddedHeader(h.getKey(), h.getValue());
+        }
+        return out;
+    }
+
     /** A WebSocket message seen by a proxy handler (upgrade request may be null). */
     public static MessageContext fromWebSocket(HttpRequest upgrade, String direction, byte[] payload, int maxBytes) {
         MessageContext.Builder b = MessageContext.builder(MessageKind.WEBSOCKET);

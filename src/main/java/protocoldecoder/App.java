@@ -44,6 +44,7 @@ import protocoldecoder.persistence.ConfigStore;
 import protocoldecoder.persistence.Settings;
 import protocoldecoder.rules.Rule;
 import protocoldecoder.rules.RuleSet;
+import protocoldecoder.edit.EditEngine;
 import protocoldecoder.scan.ScanEngine;
 import protocoldecoder.script.ScriptDecoder;
 import protocoldecoder.script.ScriptDefinition;
@@ -66,6 +67,7 @@ public final class App implements AutoCloseable {
     private final DecoderEngine engine = new DecoderEngine(registry, rules, overrides);
     private final ScriptSandbox sandbox = new ScriptSandbox();
     private final ScanEngine scanEngine = new ScanEngine(engine);
+    private final EditEngine editEngine = new EditEngine(scanEngine);
     private final ConfigStore config;
     private final Consumer<String> output;
     private final Consumer<String> errors;
@@ -85,6 +87,7 @@ public final class App implements AutoCloseable {
         this.settings = config.loadSettings();
         engine.setErrorLog(errors);
         scanEngine.setErrorLog(errors);
+        editEngine.setErrorLog(errors);
         sandbox.setLogSink(errors);
 
         // Registration order breaks confidence ties (earlier wins).
@@ -152,6 +155,7 @@ public final class App implements AutoCloseable {
     public DecoderEngine engine() { return engine; }
     public ScriptSandbox sandbox() { return sandbox; }
     public ScanEngine scanEngine() { return scanEngine; }
+    public EditEngine editEngine() { return editEngine; }
     public Settings settings() { return settings; }
 
     public void log(String s) { output.accept(s); }

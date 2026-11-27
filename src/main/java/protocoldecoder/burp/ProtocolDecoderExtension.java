@@ -58,9 +58,9 @@ public final class ProtocolDecoderExtension implements BurpExtension {
         api.userInterface().applyThemeToComponent(tab);
 
         api.userInterface().registerSuiteTab(NAME, tab);
-        api.userInterface().registerHttpRequestEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.REQUEST));
-        api.userInterface().registerHttpResponseEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.RESPONSE));
-        api.userInterface().registerWebSocketMessageEditorProvider(ctx -> new DecodedWebSocketEditor(app, env));
+        api.userInterface().registerHttpRequestEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.REQUEST, editable(ctx)));
+        api.userInterface().registerHttpResponseEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.RESPONSE, editable(ctx)));
+        api.userInterface().registerWebSocketMessageEditorProvider(ctx -> new DecodedWebSocketEditor(app, env, editable(ctx)));
         api.userInterface().registerContextMenuItemsProvider(new ContextMenu(app, env, tab));
         BurpScanning scanning = new BurpScanning(api, app);
         scanning.register();
@@ -72,6 +72,14 @@ public final class ProtocolDecoderExtension implements BurpExtension {
         api.logging().logToOutput(NAME + " loaded: " + app.registry().all().size() + " decoders ("
                 + app.scripts().size() + " custom), " + app.rules().rules().size() + " rules, "
                 + app.scanEngine().checks().size() + " scan checks.");
+    }
+
+    private static boolean editable(burp.api.montoya.ui.editor.extension.EditorCreationContext ctx) {
+        try {
+            return ctx != null && ctx.editorMode() == burp.api.montoya.ui.editor.extension.EditorMode.DEFAULT;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private static boolean isDark(MontoyaApi api) {

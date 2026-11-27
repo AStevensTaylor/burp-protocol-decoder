@@ -25,21 +25,23 @@ final class DecodedHttpEditor implements ExtensionProvidedHttpRequestEditor, Ext
     private final MessageDecodePanel panel;
     private HttpRequestResponse current;
 
-    DecodedHttpEditor(App app, UiEnv env, MessageKind kind) {
+    DecodedHttpEditor(App app, UiEnv env, MessageKind kind, boolean editable) {
         this.app = app;
         this.kind = kind;
-        this.panel = new MessageDecodePanel(app, env);
+        this.panel = new MessageDecodePanel(app, env, editable);
         env.theme(panel);
     }
 
     @Override
     public HttpRequest getRequest() {
-        return current == null ? null : current.request();
+        if (current == null) return null;
+        return kind == MessageKind.REQUEST ? Montoya.apply(current.request(), panel.edits()) : current.request();
     }
 
     @Override
     public HttpResponse getResponse() {
-        return current == null ? null : current.response();
+        if (current == null) return null;
+        return kind == MessageKind.RESPONSE ? Montoya.apply(current.response(), panel.edits()) : current.response();
     }
 
     @Override
@@ -78,6 +80,6 @@ final class DecodedHttpEditor implements ExtensionProvidedHttpRequestEditor, Ext
 
     @Override
     public boolean isModified() {
-        return false;
+        return panel.hasEdits();
     }
 }

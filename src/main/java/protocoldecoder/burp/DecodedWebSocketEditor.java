@@ -18,15 +18,17 @@ final class DecodedWebSocketEditor implements ExtensionProvidedWebSocketMessageE
     private final MessageDecodePanel panel;
     private WebSocketMessage current;
 
-    DecodedWebSocketEditor(App app, UiEnv env) {
+    DecodedWebSocketEditor(App app, UiEnv env, boolean editable) {
         this.app = app;
-        this.panel = new MessageDecodePanel(app, env);
+        this.panel = new MessageDecodePanel(app, env, editable);
         env.theme(panel);
     }
 
     @Override
     public ByteArray getMessage() {
-        return current == null ? ByteArray.byteArray(new byte[0]) : current.payload();
+        if (current == null) return ByteArray.byteArray(new byte[0]);
+        byte[] edited = panel.edits().body();
+        return edited != null ? ByteArray.byteArray(edited) : current.payload();
     }
 
     @Override
@@ -64,6 +66,6 @@ final class DecodedWebSocketEditor implements ExtensionProvidedWebSocketMessageE
 
     @Override
     public boolean isModified() {
-        return false;
+        return panel.hasEdits();
     }
 }
