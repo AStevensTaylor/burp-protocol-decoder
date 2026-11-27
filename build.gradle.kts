@@ -3,7 +3,21 @@ plugins {
 }
 
 group = "protocoldecoder"
-version = "0.1.0"
+// The version lives in gradle.properties so CI can override it with
+// `-Pversion=<next>`; releases derive that number from the git tags.
+
+// Identifies the exact build at runtime. CI provides the sha; a local build
+// falls back to git, and to "unknown" outside a checkout.
+val buildCommit: Provider<String> =
+    providers.environmentVariable("GITHUB_SHA").map { it.take(7) }
+        .orElse(
+            providers.exec {
+                commandLine("git", "rev-parse", "--short", "HEAD")
+                isIgnoreExitValue = true
+            }.standardOutput.asText.map { it.trim() }
+        )
+        .map { it.ifBlank { "unknown" } }
+        .orElse("unknown")
 
 repositories {
     mavenCentral()
@@ -39,5 +53,12 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF", "module-info.class", "META-INF/versions/*/module-info.class")
+    }
+    manifest {
+        attributes(
+            "Implementation-Title" to "Burp Protocol Decoder",
+            "Implementation-Version" to project.version.toString(),
+            "Implementation-Commit" to buildCommit.get(),
+        )
     }
 }
