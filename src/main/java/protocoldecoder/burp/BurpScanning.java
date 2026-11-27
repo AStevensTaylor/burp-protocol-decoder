@@ -29,6 +29,7 @@ import burp.api.montoya.websocket.Direction;
 import protocoldecoder.App;
 import protocoldecoder.core.Header;
 import protocoldecoder.core.MessageContext;
+import protocoldecoder.core.WebSocketWindow;
 import protocoldecoder.core.MessageKind;
 import protocoldecoder.scan.ActiveCheck;
 import protocoldecoder.scan.Evidence;
@@ -267,6 +268,8 @@ final class BurpScanning {
     /** Runs passive checks on proxied WebSocket messages (off the proxy thread) and adds issues to the site map. */
     private final class WebSocketScanner implements ProxyMessageHandler {
         private final HttpRequest upgrade;
+        private final WebSocketWindows.Recent fromClient = new WebSocketWindows.Recent();
+        private final WebSocketWindows.Recent fromServer = new WebSocketWindows.Recent();
 
         WebSocketScanner(HttpRequest upgrade) {
             this.upgrade = upgrade;
@@ -274,9 +277,11 @@ final class BurpScanning {
 
         private void submit(byte[] payload, Direction direction) {
             if (!app.settings().scanWebSockets || !app.settings().scanPassive) return;
+            // Taken on the proxy thread so the window follows the order messages pass through.
+            WebSocketWindow window = (direction == Direction.CLIENT_TO_SERVER ? fromClient : fromServer).add(payload);
             wsExecutor.execute(() -> {
                 try {
-                    MessageContext m = Montoya.fromWebSocket(upgrade, direction == null ? null : direction.name(), payload, maxBytes());
+                    MessageContext m = Montoya.fromWebSocket(upgrade, direction == null ? null : direction.name(), payload, maxBytes(), window);
                     for (Finding f : app.scanEngine().passive(m, true)) {
                         String key = f.title() + "\u0000" + issueBaseUrl(f, upgrade);
                         if (reportedWebSocketIssues.size() > MAX_WS_ISSUE_KEYS || !reportedWebSocketIssues.add(key)) continue;
@@ -311,6 +316,12 @@ final class BurpScanning {
         @Override
         public BinaryMessageToBeSentAction handleBinaryMessageToBeSent(InterceptedBinaryMessage message) {
             return BinaryMessageToBeSentAction.continueWith(message);
+        }
+
+        @Override
+        public void onClose() {
+            fromClient.clear();
+            fromServer.clear();
         }
     }
 

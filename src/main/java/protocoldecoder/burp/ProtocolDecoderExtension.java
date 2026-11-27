@@ -60,7 +60,8 @@ public final class ProtocolDecoderExtension implements BurpExtension {
         api.userInterface().registerSuiteTab(NAME, tab);
         api.userInterface().registerHttpRequestEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.REQUEST, editable(ctx)));
         api.userInterface().registerHttpResponseEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.RESPONSE, editable(ctx)));
-        api.userInterface().registerWebSocketMessageEditorProvider(ctx -> new DecodedWebSocketEditor(app, env, editable(ctx)));
+        WebSocketWindows windows = new WebSocketWindows(api);
+        api.userInterface().registerWebSocketMessageEditorProvider(ctx -> new DecodedWebSocketEditor(app, env, editable(ctx), windows));
         api.userInterface().registerContextMenuItemsProvider(new ContextMenu(app, env, tab));
         BurpScanning scanning = new BurpScanning(api, app);
         scanning.register();

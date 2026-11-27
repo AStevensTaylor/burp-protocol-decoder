@@ -8,6 +8,7 @@ import protocoldecoder.core.DecodedNode;
 import protocoldecoder.core.MatchResult;
 import protocoldecoder.core.MessageContext;
 import protocoldecoder.core.ProtocolDecoder;
+import protocoldecoder.core.WebSocketWindow;
 import protocoldecoder.util.Codecs;
 import protocoldecoder.util.JsonTree;
 
@@ -90,7 +91,7 @@ public final class BlazorDecoder implements ProtocolDecoder {
     @Override
     public DecodeResult decode(MessageContext m) throws DecodeException {
         String path = m.path().toLowerCase(Locale.ROOT);
-        if (m.isWebSocket()) return hubPayload(m, m.body(), "WebSocket " + direction(m));
+        if (m.isWebSocket()) return webSocket(m);
         if (path.endsWith("/negotiate")) return negotiate(m);
         if (path.endsWith("/_blazor/disconnect") && m.isRequest()) return disconnect(m);
         if (longPolling(m) || blazorHub(m)) {
@@ -113,13 +114,65 @@ public final class BlazorDecoder implements ProtocolDecoder {
         return "message";
     }
 
+    /**
+     * A WebSocket message. Large hub messages are split by the server across several WebSocket messages; when this one
+     * isn't whole, the neighbouring messages (if the host supplied them) are used to put the hub message back together.
+     */
+    private DecodeResult webSocket(MessageContext m) throws DecodeException {
+        String what = "WebSocket " + direction(m);
+        byte[] p = m.body();
+        if (p.length == 0 || SignalR.selfContained(p)) return hubPayload(m, p, what);
+        WebSocketWindow w = m.webSocketWindow();
+        SignalRStream.Assembled a = w == null ? null : SignalRStream.assemble(w);
+        if (a == null || !a.reassembled()) {
+            DecodeResult r = hubPayload(m, p, what);
+            List<String> warnings = new ArrayList<>(r.warnings());
+            warnings.add(w == null
+                    ? "This looks like part of a hub message split across several WebSocket messages; view it in Proxy history to have it reassembled"
+                    : "This looks like part of a hub message split across several WebSocket messages, but its start wasn't found among the neighbouring messages");
+            return new DecodeResult(r.summary(), r.root(), r.text(), warnings);
+        }
+        return assembled(m, a, what);
+    }
+
+    private DecodeResult assembled(MessageContext m, SignalRStream.Assembled a, String what) throws DecodeException {
+        String where = a.frames() == 1 ? "this WebSocket message"
+                : a.frames() + " consecutive WebSocket messages; this one is part " + a.part();
+        String pendingText = a.missing() > 0 ? bytes(a.pending()) + " of " + bytes(a.pending() + a.missing()) + " captured"
+                : bytes(a.pending()) + " captured, end not seen";
+        if (a.payload().length == 0) {
+            DecodedNode root = DecodedNode.object("Blazor");
+            root.put("Fragment", "Part " + a.part() + " of a hub message that continues past the captured WebSocket messages");
+            root.put("Hub message so far", pendingText);
+            root.add(DecodedNode.note("The rest of this hub message hasn't been captured (yet); it is decoded once all of its WebSocket messages are in Proxy history"));
+            return new DecodeResult(what + ": part " + a.part() + " of an unfinished hub message (" + pendingText + ")", root, null, List.of());
+        }
+        List<DecodedNode> info = new ArrayList<>();
+        info.add(DecodedNode.leaf("Reassembled from", where));
+        if (a.missing() != 0) {
+            info.add(DecodedNode.note("A further hub message starts in this WebSocket message and runs past the captured ones (" + pendingText + ")"));
+        }
+        DecodeResult r = hubPayload(m, a.payload(), what, a.jsonFirst(), info);
+        String suffix = a.frames() > 1 ? " [reassembled from " + a.frames() + " WebSocket messages]" : " [+ unfinished hub message]";
+        return new DecodeResult(r.summary() + suffix, r.root(), r.text(), r.warnings());
+    }
+
+    private static String bytes(long n) {
+        return n < 10_000 ? n + " bytes" : n < 10_000_000 ? (n / 1024) + " KiB" : (n / (1024 * 1024)) + " MiB";
+    }
+
     private DecodeResult hubPayload(MessageContext m, byte[] payload, String what) throws DecodeException {
+        return hubPayload(m, payload, what, true, List.of());
+    }
+
+    private DecodeResult hubPayload(MessageContext m, byte[] payload, String what, boolean allowJson, List<DecodedNode> info) throws DecodeException {
         if (payload == null || payload.length == 0) throw new DecodeException("Empty payload");
-        List<SignalR.Message> msgs = SignalR.decodePayload(payload);
+        List<SignalR.Message> msgs = SignalR.decodePayload(payload, allowJson);
         if (msgs.isEmpty()) throw new DecodeException("No SignalR messages found");
         DecodedNode root = DecodedNode.object("Blazor");
         String connection = Codecs.first(m.queryParameters(), "id");
         if (connection != null) root.put("Connection token (?id=)", connection);
+        info.forEach(root::add);
         DecodedNode list = DecodedNode.array("Messages");
         List<String> labels = new ArrayList<>();
         boolean unknown = false;

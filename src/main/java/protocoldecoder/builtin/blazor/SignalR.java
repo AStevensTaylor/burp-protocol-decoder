@@ -293,10 +293,15 @@ final class SignalR {
      * MessagePack messages.
      */
     static List<Message> decodePayload(byte[] p) {
+        return decodePayload(p, true);
+    }
+
+    /** As {@link #decodePayload(byte[])}; with {@code allowJson} false the payload is binary messages only. */
+    static List<Message> decodePayload(byte[] p, boolean allowJson) {
         List<Message> out = new ArrayList<>();
         int pos = 0;
         // Leading JSON records (handshake, or the whole payload for the JSON protocol).
-        while (pos < p.length && p[pos] == '{') {
+        while (allowJson && pos < p.length && p[pos] == '{') {
             int rs = indexOf(p, (byte) RS, pos);
             if (rs < 0) break;
             out.add(fromJson(new String(p, pos, rs - pos, StandardCharsets.UTF_8), out.size()));
@@ -313,6 +318,20 @@ final class SignalR {
         }
         for (int[] f : frames) out.add(fromMessagePack(p, f[0], f[1], out.size()));
         return out;
+    }
+
+    /**
+     * True if the payload holds only whole hub messages; false if it looks like part of a message split across
+     * several WebSocket messages (or isn't SignalR at all).
+     */
+    static boolean selfContained(byte[] p) {
+        int pos = 0;
+        while (pos < p.length && p[pos] == '{') {
+            int rs = indexOf(p, (byte) RS, pos);
+            if (rs < 0) return false;
+            pos = rs + 1;
+        }
+        return pos >= p.length || binaryFrames(p, pos) != null;
     }
 
     private static int indexOf(byte[] p, byte v, int from) {
