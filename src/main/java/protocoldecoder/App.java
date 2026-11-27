@@ -1,6 +1,21 @@
 package protocoldecoder;
 
+import protocoldecoder.builtin.actioncable.ActionCableDecoder;
+import protocoldecoder.builtin.aspnetajax.AspNetAjaxDecoder;
+import protocoldecoder.builtin.graphql.GraphQlDecoder;
+import protocoldecoder.builtin.graphql.TrpcDecoder;
+import protocoldecoder.builtin.grpc.GrpcDecoder;
+import protocoldecoder.builtin.livewire.LivewireDecoder;
+import protocoldecoder.builtin.nextjs.NextJsDecoder;
+import protocoldecoder.builtin.saml.SamlDecoder;
+import protocoldecoder.builtin.serialized.SerializedObjectDecoder;
+import protocoldecoder.builtin.turbo.TurboDecoder;
+import protocoldecoder.builtin.viewstate.ViewStateDecoder;
+import protocoldecoder.builtin.batchexecute.BatchExecuteDecoder;
 import protocoldecoder.builtin.blazor.BlazorDecoder;
+import protocoldecoder.builtin.firebase.FirebaseDecoder;
+import protocoldecoder.builtin.phoenix.PhoenixDecoder;
+import protocoldecoder.builtin.socketio.SocketIoDecoder;
 import protocoldecoder.builtin.devexpress.DevExpressDecoder;
 import protocoldecoder.builtin.newrelic.NewRelicDecoder;
 import protocoldecoder.core.DecoderEngine;
@@ -51,9 +66,25 @@ public final class App implements AutoCloseable {
         engine.setErrorLog(errors);
         sandbox.setLogSink(errors);
 
+        // Registration order breaks confidence ties (earlier wins).
         registry.register(new DevExpressDecoder());
+        registry.register(new AspNetAjaxDecoder());
+        registry.register(new ViewStateDecoder());
         registry.register(new NewRelicDecoder());
         registry.register(new BlazorDecoder());
+        registry.register(new NextJsDecoder());
+        registry.register(new LivewireDecoder());
+        registry.register(new TurboDecoder());
+        registry.register(new ActionCableDecoder());
+        registry.register(new SocketIoDecoder());
+        registry.register(new PhoenixDecoder());
+        registry.register(new GraphQlDecoder());
+        registry.register(new TrpcDecoder());
+        registry.register(new GrpcDecoder());
+        registry.register(new SamlDecoder());
+        registry.register(new FirebaseDecoder());
+        registry.register(new BatchExecuteDecoder());
+        registry.register(new SerializedObjectDecoder());
         for (ScriptDefinition d : config.loadScripts()) {
             if (d.validate() != null || registry.byId(d.id()).isPresent()) {
                 errors.accept("Skipping saved script '" + d.id() + "': " + (d.validate() != null ? d.validate() : "duplicate id"));
@@ -64,6 +95,7 @@ public final class App implements AutoCloseable {
             if (sd.compileError() != null) errors.accept("Script '" + d.id() + "' has errors: " + sd.compileError());
             registry.register(sd);
         }
+
         config.loadDisabled(registry);
         rules.setRules(config.loadRules());
         config.loadOverrides(overrides);
