@@ -1,21 +1,40 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="assets/icon.svg" width="96" height="96" alt="Protocol Decoder logo">
 
 # Protocol Decoder for Burp Suite
 
-A Burp Suite extension (Montoya API) that recognises application protocols inside HTTP and WebSocket traffic and adds a
-**Decoded** tab, showing the decoded message as a tree and as text, wherever Burp shows a message (Proxy, Repeater,
-Intruder, Logger, Site map, Organizer…).
+A Burp Suite extension (Montoya API) for application protocols carried inside HTTP and WebSocket traffic.
+For each protocol it:
 
-It is a general framework: each protocol is a **decoder**, made of a matcher and a decoder. It ships with:
+- **decodes** messages in a **Decoded** tab, as a tree and as text, wherever Burp shows a message (Proxy, Repeater,
+  Intruder, Logger, Site map, Organizer…);
+- **scans** them, through passive checks, active checks and protocol-aware insertion points in Burp's scanner.
 
-| Decoder | Recognises |
-|---|---|
-| **DevExpress** | ASP.NET WebForms callbacks (`__CALLBACKID` / `__CALLBACKPARAM` with DevExpress `NAME\|LEN;VALUE;` segments), MVC callbacks (`DXCallbackName` / `DXCallbackArgument`), `/*DX*/({...})` callback responses including the ASP.NET `s<len>\|<validation>` envelope, and Reporting / Query Builder service calls (`DXXRDV`, `DXXRD`, `DXXQB`). |
-| **Blazor / SignalR** | Blazor Server / Web App circuits on `/_blazor`: WebSocket frames and long-polling bodies in the MessagePack (`blazorpack`) or JSON hub protocol, with Blazor hub methods and their arguments named (`StartCircuit`, `BeginInvokeDotNetFromJS`, `DispatchBrowserEvent`, `JS.BeginInvokeJS`…) and `JS.RenderBatch` binaries decoded into component edits, frames and the string table. Also negotiate and disconnect calls, `blazor.boot.json` (WebAssembly), and the `<!--Blazor…-->` markers and persisted state in prerendered HTML. Other SignalR hubs are recognised at lower confidence. |
-| **New Relic** | Browser agent beacons (`bam*.nr-data.net`: RUM, events, jserrors, ins, resources, logs, blobs; gzip and BEL payloads), mobile agent and APM collector traffic, `newrelic` / `traceparent` / `tracestate@nr` / `X-NewRelic-*` headers on any request, and the `NREUM.info` / `NREUM.init` / `NREUM.loader_config` configuration embedded in HTML pages. |
-
-You can add your own decoders as sandboxed JavaScript from inside Burp, and use rules or manual choices to override
+Each protocol is a pluggable **decoder** (matcher + decoder) with an optional **scanner**. You can add your own
+decoders, and passive checks, as sandboxed JavaScript from inside Burp, and use rules or manual choices to override
 which decoder handles a message.
+
+## Built-in protocols
+
+| Protocol | Decodes | Scanner highlights |
+|---|---|---|
+| **DevExpress** | WebForms/MVC callbacks (`NAME\|LEN;VALUE;` segments), `/*DX*/` responses, Reporting calls | Insertion points inside callback segments; callback error disclosure; malformed-callback probe |
+| **ASP.NET AJAX** | UpdatePanel async postbacks and delta responses, ASMX/WCF/PageMethods JSON (`d`, `__type`, `/Date()/`), proxy scripts, `.axd` | Service stack traces; proxy script method lists; `jsdebug`; verbose-error probe |
+| **ASP.NET ViewState** | ObjectStateFormatter graph, split fields, EventValidation, MAC/encryption analysis | No-MAC / weak-MAC; embedded BinaryFormatter; **active MAC-enforcement test**; insertion points inside unprotected ViewState |
+| **Blazor / SignalR** | `/_blazor` circuits (blazorpack and JSON), `JS.RenderBatch`, negotiate, WebAssembly boot manifest, prerender markers | Detailed circuit errors; WASM debug build/assemblies; persisted state; insertion points in long-poll hub messages |
+| **Next.js** | RSC Flight payloads, Server Actions, router-state headers, `__NEXT_DATA__`, `/_next/data` | Secrets in page data; Server Action inventory; dev server; **CVE-2025-29927 middleware bypass probe**; insertion points in action args |
+| **Laravel Livewire** | v3 `/livewire/update` and v2 `/livewire/message` (snapshots, synthesizers, effects), page markers | Model class/key exposure; debug pages; **snapshot checksum enforcement test** |
+| **Hotwire Turbo** / **Action Cable** | Turbo Streams, Turbo Frames, signed stream names (GlobalID / Marshal); Action Cable frames | GlobalID / Marshal stream names; sensitive broadcasts; cross-origin cable handshake |
+| **Socket.IO / Engine.IO** | v3/v4 WebSocket and polling payloads, events, acks, namespaces, binary attachments | Error/sensitive data in events; polling enabled; cross-origin handshake; insertion points in polling events |
+| **Phoenix Channels / LiveView** | v1/v2/binary serializers, LiveView events and diffs, signed tokens | Readable token data; error replies; cross-origin socket; insertion points in long-poll messages |
+| **GraphQL** / **tRPC** | Queries (formatted), batches, persisted queries, uploads, responses, GraphQL over WebSocket; tRPC batches/superjson | Introspection, suggestions, verbose errors, batching, query-over-GET CSRF; insertion points in **inline literals** and string-encoded variables; tRPC `input` |
+| **gRPC / Protobuf** | Schemaless protobuf, gRPC, gRPC-Web(-text), Connect, `x-protobuf`; status names and details | Insertion points in **every protobuf field** (lengths, framing, compression rebuilt); error/debug-info disclosure; reflection probe |
+| **SAML / WS-Fed** | Redirect/POST/artifact bindings, assertions, signatures, encryption (hardened XML parser) | Unsigned assertions, SHA-1, XSW indicators, weak conditions; **active signature-required / signature-validated tests**; insertion points in NameID/attributes |
+| **Firebase** | Firestore WebChannel and REST (typed values), Realtime Database WS/long-poll/REST, Auth (JWTs), web config | Unauthenticated RTDB read / Firestore read & list (read-only); token claims; account enumeration; insertion points in WebChannel requests |
+| **Google batchexecute** | `f.req` RPC envelopes and chunked `)]}'` responses, JSON-in-JSON unpacked | Insertion points through nested JSON-in-string; RPC inventory; error details |
+| **New Relic** | Browser/mobile/APM telemetry, tracing headers, `NREUM` page config | Sensitive data sent to New Relic; exposed agent config; APM license key in client traffic |
+| **Serialized objects** | Java, .NET BinaryFormatter, PHP, Python pickle, Ruby Marshal, Json.NET `$type` in params/cookies/headers/bodies (any base64/gzip/hex wrapping) | Client-supplied native serialization by format; gadget class names; insertion points in serialized strings (lengths and wrappers rebuilt) |
+
+Decoders are pure parsers: nothing is deserialized, and no exploit payloads are generated.
 
 ## Build and install
 
@@ -26,7 +45,46 @@ Requirements: JDK 21 or newer.
 ```
 
 In Burp, go to **Extensions → Installed → Add**, pick type *Java*, and choose
-`build/libs/burp-protocol-decoder-0.1.0.jar`. Rhino and Gson are bundled into that jar.
+`build/libs/burp-protocol-decoder-<version>.jar`. Rhino and Gson are bundled into that jar.
+Prebuilt jars are attached to each GitHub release; every merge that changes the jar
+publishes one.
+
+## CI and releases
+
+`.github/workflows/build.yml` builds and tests every push and pull request, uploads the
+jar as a build artifact (and the test report when something fails), and publishes a
+release when `main` moves. `.github/workflows/release-label.yml` is the status check
+that makes the release decision possible.
+
+Every pull request carries exactly one release label; the **release label** check fails
+until it does:
+
+| Label | Effect on the newest `vX.Y.Z` tag |
+|---|---|
+| `release:major` | `X+1.0.0`: incompatible change to how the extension is used or configured |
+| `release:minor` | `X.Y+1.0`: new capability, backwards compatible |
+| `release:patch` | `X.Y.Z+1`: fix or internal change, no new capability |
+| `release:none` | No release. Docs, CI, and anything that does not change the jar |
+
+On a push to `main` the release job reads the label off the merged pull request, works
+out the next version from the newest `v*` tag (starting from `0.0.0` when there is
+none), rebuilds and retests the jar with `-Pversion=<next>`, then creates the tag and a
+release with generated notes and attaches `burp-protocol-decoder-<version>.jar`. A
+commit pushed straight to `main` has no pull request and releases nothing; run the
+workflow manually with a `bump` input if it should have.
+
+The tags are the source of truth for the version. `version` in `gradle.properties` is
+only the fallback for local builds. The jar manifest records `Implementation-Version`
+and `Implementation-Commit`.
+
+- Every action is pinned to a commit SHA, with its tag in a trailing comment.
+  Dependabot (`.github/dependabot.yml`) proposes Gradle and Actions updates weekly.
+- The Gradle wrapper jar is checked against the checksum Gradle publishes for the
+  distribution `gradle-wrapper.properties` names, before anything else runs.
+- Pull requests cannot reach a write token. The workflow defaults to `contents: read`;
+  only the release job widens that (`contents: write`, `pull-requests: read`), and it
+  runs only on a push to `main` or a manual run. The label check runs with
+  `permissions: {}` and never checks out the branch.
 
 ## How a decoder is chosen
 
@@ -38,6 +96,25 @@ The first of these that applies wins:
 
 By default, the Decoded tab only appears when a decoder applies. To pick a decoder for any message, turn on
 *Settings & help → Show the Decoded tab on every message*.
+
+## Scanner integration
+
+Protocol checks plug into Burp's scanner. The **Scan checks** tab has switches for each feature and a checkbox for
+every check.
+
+- **Passive checks** run on proxied traffic and passive scans. Proxied **WebSocket** messages are checked as well,
+  which Burp's scanner doesn't do itself; those issues are added to the site map.
+- **Active checks** run only in active scans you start. They are read-only and send a small, fixed number of requests
+  (each check's description says how many). Most are differential, comparing against the base response or a control.
+- **Protocol-aware insertion points** let Burp's own payloads (SQLi, XSS, …) reach values nested inside encodings Burp
+  can't edit: length prefixes, protobuf, base64/gzip wrappers, JSON inside strings, GraphQL literals, serialized
+  objects. The surrounding structure is rebuilt for every payload.
+- **Which checks run.** A protocol's checks run whenever its decoder matches a message, or a rule or manual choice
+  forces it. A "Don't decode" rule or manual choice also excludes the message from scanning.
+- **Protocol detected.** An informational issue, raised once per host, names each protocol in use.
+
+Custom scripts can add passive checks by defining `passive(msg)`, returning
+`[{title, severity, confidence, detail, remediation, evidence: [...]}]`. Scripts can't send requests.
 
 ## Writing a custom decoder
 
@@ -96,10 +173,11 @@ public interface ProtocolDecoder {
 }
 ```
 
-Then register it in `protocoldecoder.App`. `MessageContext` doesn't depend on Burp: it always carries the request,
+Then register it in `protocoldecoder.App`. To add scanning, implement `protocoldecoder.scan.ProtocolScanner`
+(passive checks, active checks, insertion points) and register it with `scanEngine.register(...)`. `InsertionPoints`
+and `ScanPatterns` have helpers for re-encoding and for spotting stack traces or sensitive values. `MessageContext` doesn't depend on Burp: it always carries the request,
 plus the response when there is one, and `kind()` says which side is displayed. This makes decoders unit-testable
-without Burp. Build the output with `DecodedNode`, or `JsonTree.toNode(...)` for JSON. See `builtin/devexpress`, `builtin/blazor` and
-`builtin/newrelic`.
+without Burp. Build the output with `DecodedNode`, or `JsonTree.toNode(...)` for JSON. See `builtin/devexpress` for a small, complete example of both.
 
 ## Project layout
 
@@ -107,12 +185,14 @@ without Burp. Build the output with `DecodedNode`, or `JsonTree.toNode(...)` for
 src/main/java/protocoldecoder/
   core/        MessageContext, ProtocolDecoder, DecoderRegistry, DecoderEngine (override → rule → auto), OverrideStore
   rules/       Rule, Condition, operators/fields, RuleSet
-  builtin/     devexpress/, newrelic/, blazor/ (SignalR framing, MessagePack reader, RenderBatch)
+  builtin/     one package per protocol: <Name>Decoder + <Name>Scanner (+ parsers/writers)
+  scan/        ScanEngine, PassiveCheck/ActiveCheck/InsertionPoint, Finding, InsertionPoints, ScanPatterns
   script/      ScriptSandbox (Rhino), JsMessage/JsHelpers/JsConvert, ScriptDecoder, templates & API reference
   persistence/ Settings, ConfigStore, JSON codec, export bundles
   ui/          Decoded tab (MessageDecodePanel/DecodedView), suite tab panels, rule and script editors
-  burp/        Montoya entry point, editor providers, context menu, Montoya → MessageContext adapter
+  burp/        Montoya entry point, editor providers, context menu, scanner/proxy adapter (BurpScanning)
 ```
 
-Run the tests with `./gradlew test`. They cover the decoders, the rule engine, the sandbox security tests, the example
-script and a headless smoke test of the Swing UI.
+Run the tests with `./gradlew test` (about 600). They cover every decoder and scanner, including insertion-point
+round trips and active checks against a fake HTTP sender, plus the rule engine, the sandbox security tests, the
+example script and a headless smoke test of the Swing UI.
