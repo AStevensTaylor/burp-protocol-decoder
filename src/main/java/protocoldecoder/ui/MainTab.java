@@ -15,6 +15,7 @@ public final class MainTab extends JPanel {
         tabs.addTab("Decoders", new DecodersPanel(app, env));
         tabs.addTab("Rules", new RulesPanel(app, env));
         tabs.addTab("Manual choices", new OverridesPanel(app));
+        tabs.addTab("Scan checks", new ScanChecksPanel(app));
         tabs.addTab("Settings & help", new SettingsPanel(app, env));
         add(tabs, BorderLayout.CENTER);
     }

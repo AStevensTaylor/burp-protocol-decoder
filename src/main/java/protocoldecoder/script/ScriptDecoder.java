@@ -11,6 +11,8 @@ import protocoldecoder.core.DecodedNode;
 import protocoldecoder.core.MatchResult;
 import protocoldecoder.core.MessageContext;
 import protocoldecoder.core.ProtocolDecoder;
+import protocoldecoder.scan.ScanIds;
+import protocoldecoder.util.Codecs;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +37,7 @@ public final class ScriptDecoder implements ProtocolDecoder {
     private final Script compiled;
     private final String compileError;
     private final boolean hasMatch;
+    private final boolean hasPassive;
     private final AtomicInteger consecutiveMatchFailures = new AtomicInteger();
     private volatile String lastError;
 
@@ -45,9 +48,11 @@ public final class ScriptDecoder implements ProtocolDecoder {
         Script s = null;
         String err = null;
         boolean m = false;
+        boolean p = false;
         try {
             s = sandbox.compile(definition.source(), definition.id() + ".js");
             m = sandbox.defines(s, "match");
+            p = sandbox.defines(s, "passive");
             if (!sandbox.defines(s, "decode")) err = "script does not define a decode(msg) function";
         } catch (ScriptException e) {
             err = e.getMessage();
@@ -55,6 +60,7 @@ public final class ScriptDecoder implements ProtocolDecoder {
         this.compiled = err == null ? s : null;
         this.compileError = err;
         this.hasMatch = m;
+        this.hasPassive = p && err == null;
     }
 
     public ScriptDefinition definition() { return definition.copy(); }
@@ -67,6 +73,9 @@ public final class ScriptDecoder implements ProtocolDecoder {
     public String compileError() { return compileError; }
 
     public boolean hasMatcher() { return hasMatch; }
+
+    /** Whether the script defines passive(msg) for scanner issues. */
+    public boolean hasPassive() { return hasPassive; }
 
     public boolean matcherSuspended() { return consecutiveMatchFailures.get() >= MAX_MATCH_FAILURES; }
 
@@ -173,6 +182,72 @@ public final class ScriptDecoder implements ProtocolDecoder {
         } catch (JsConvert.TooLarge e) {
             throw new ScriptException(e.getMessage() + " (limit " + maxNodes + ")");
         }
+    }
+
+    /** Runs the script's passive(msg) check; errors are recorded in lastError and yield no findings. */
+    public List<protocoldecoder.scan.Finding> passive(MessageContext m) {
+        Trace<List<protocoldecoder.scan.Finding>> t = tracePassive(m);
+        if (t.error() != null) {
+            lastError = "passive(): " + t.error();
+            return List.of();
+        }
+        return t.value();
+    }
+
+    public Trace<List<protocoldecoder.scan.Finding>> tracePassive(MessageContext m) {
+        List<String> logs = new ArrayList<>();
+        long start = System.nanoTime();
+        if (compiled == null || !hasPassive) return new Trace<>(List.of(), compileError, logs, 0);
+        SandboxLimits l = limits.get();
+        try {
+            List<protocoldecoder.scan.Finding> r = sandbox.invoke(compiled, "passive", l.decodeTimeoutMs(), new JsMessage.Data(m, l.maxBodyBytes()), logs,
+                    (cx, scope, v) -> toFindings(v, m));
+            return new Trace<>(r == null ? List.of() : r, null, logs, ms(start));
+        } catch (ScriptException e) {
+            return new Trace<>(List.of(), e.getMessage(), logs, ms(start));
+        }
+    }
+
+    private List<protocoldecoder.scan.Finding> toFindings(Object v, MessageContext m) {
+        List<protocoldecoder.scan.Finding> out = new ArrayList<>();
+        if (v == null || Undefined.isUndefined(v)) return out;
+        List<Object> items = new ArrayList<>();
+        if (v instanceof NativeArray arr) {
+            for (int i = 0; i < arr.getLength() && i < 50; i++) items.add(arr.get(i, arr));
+        } else {
+            items.add(v);
+        }
+        for (Object item : items) {
+            if (!(item instanceof Scriptable s)) continue;
+            String title = JsConvert.str(ScriptableObject.getProperty(s, "title"));
+            if (title == null || title.isBlank()) continue;
+            protocoldecoder.scan.Finding f = protocoldecoder.scan.Finding.of(ScanIds.scriptCheck(definition.id()), Codecs.truncate(title, 200))
+                    .severity(enumOr(protocoldecoder.scan.Severity.class, JsConvert.str(ScriptableObject.getProperty(s, "severity")), protocoldecoder.scan.Severity.INFORMATION))
+                    .confidence(enumOr(protocoldecoder.scan.Confidence.class, JsConvert.str(ScriptableObject.getProperty(s, "confidence")), protocoldecoder.scan.Confidence.TENTATIVE))
+                    .detail(htmlText(JsConvert.str(ScriptableObject.getProperty(s, "detail"))))
+                    .remediation(htmlText(JsConvert.str(ScriptableObject.getProperty(s, "remediation"))))
+                    .background("Reported by the custom decoder script \"" + protocoldecoder.scan.Finding.esc(definition.name()) + "\".");
+            boolean inResponse = "response".equalsIgnoreCase(String.valueOf(JsConvert.str(ScriptableObject.getProperty(s, "evidenceIn"))));
+            for (String e : JsConvert.strings(ScriptableObject.getProperty(s, "evidence"))) {
+                f.evidence(new protocoldecoder.scan.Evidence(inResponse ? protocoldecoder.core.MessageKind.RESPONSE : m.kind() == protocoldecoder.core.MessageKind.RESPONSE
+                        ? protocoldecoder.core.MessageKind.RESPONSE : protocoldecoder.core.MessageKind.REQUEST, e));
+            }
+            out.add(f);
+        }
+        return out;
+    }
+
+    private static <E extends Enum<E>> E enumOr(Class<E> type, String name, E dflt) {
+        if (name == null) return dflt;
+        try {
+            return Enum.valueOf(type, name.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return dflt;
+        }
+    }
+
+    private static String htmlText(String s) {
+        return s == null ? "" : protocoldecoder.scan.Finding.esc(Codecs.truncate(s, 20_000)).replace("\n", "<br>");
     }
 
     private static boolean isResultObject(Scriptable s) {

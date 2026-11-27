@@ -62,10 +62,16 @@ public final class ProtocolDecoderExtension implements BurpExtension {
         api.userInterface().registerHttpResponseEditorProvider(ctx -> new DecodedHttpEditor(app, env, MessageKind.RESPONSE));
         api.userInterface().registerWebSocketMessageEditorProvider(ctx -> new DecodedWebSocketEditor(app, env));
         api.userInterface().registerContextMenuItemsProvider(new ContextMenu(app, env, tab));
-        api.extension().registerUnloadingHandler(app::close);
+        BurpScanning scanning = new BurpScanning(api, app);
+        scanning.register();
+        api.extension().registerUnloadingHandler(() -> {
+            scanning.close();
+            app.close();
+        });
 
         api.logging().logToOutput(NAME + " loaded: " + app.registry().all().size() + " decoders ("
-                + app.scripts().size() + " custom), " + app.rules().rules().size() + " rules.");
+                + app.scripts().size() + " custom), " + app.rules().rules().size() + " rules, "
+                + app.scanEngine().checks().size() + " scan checks.");
     }
 
     private static boolean isDark(MontoyaApi api) {

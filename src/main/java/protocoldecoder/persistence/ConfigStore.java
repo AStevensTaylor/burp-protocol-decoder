@@ -20,6 +20,7 @@ public final class ConfigStore {
     static final String KEY_DISABLED = "protocoldecoder.disabled";
     static final String KEY_SETTINGS = "protocoldecoder.settings";
     static final String KEY_OVERRIDES = "protocoldecoder.overrides";
+    static final String KEY_DISABLED_CHECKS = "protocoldecoder.disabledChecks";
 
     private final KeyValueStore global;
     private final KeyValueStore project;
@@ -67,6 +68,19 @@ public final class ConfigStore {
 
     public void saveDisabled(DecoderRegistry registry) {
         global.set(KEY_DISABLED, ConfigCodec.idsToJson(registry.disabledIds()));
+    }
+
+    public java.util.Set<String> loadDisabledChecks() {
+        try {
+            return ConfigCodec.idsFromJson(global.get(KEY_DISABLED_CHECKS));
+        } catch (RuntimeException e) {
+            errorLog.accept("Could not load disabled scan checks: " + e);
+            return java.util.Set.of();
+        }
+    }
+
+    public void saveDisabledChecks(java.util.Set<String> ids) {
+        global.set(KEY_DISABLED_CHECKS, ConfigCodec.idsToJson(ids));
     }
 
     public Settings loadSettings() {
