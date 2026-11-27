@@ -25,6 +25,22 @@ import protocoldecoder.builtin.nextjs.NextJsScanner;
 import protocoldecoder.builtin.livewire.LivewireScanner;
 import protocoldecoder.builtin.turbo.TurboScanner;
 import protocoldecoder.builtin.actioncable.ActionCableScanner;
+import protocoldecoder.builtin.aspnetajax.AspNetAjaxCodec;
+import protocoldecoder.builtin.saml.SamlCodec;
+import protocoldecoder.builtin.serialized.SerializedObjectCodec;
+import protocoldecoder.builtin.devexpress.DevExpressCodec;
+import protocoldecoder.builtin.graphql.GraphQlCodec;
+import protocoldecoder.builtin.graphql.TrpcCodec;
+import protocoldecoder.builtin.nextjs.NextJsCodec;
+import protocoldecoder.builtin.batchexecute.BatchExecuteCodec;
+import protocoldecoder.builtin.firebase.FirebaseCodec;
+import protocoldecoder.builtin.livewire.LivewireCodec;
+import protocoldecoder.builtin.grpc.GrpcCodec;
+import protocoldecoder.builtin.blazor.BlazorCodec;
+import protocoldecoder.builtin.socketio.SocketIoCodec;
+import protocoldecoder.builtin.phoenix.PhoenixCodec;
+import protocoldecoder.builtin.actioncable.ActionCableCodec;
+import protocoldecoder.builtin.turbo.TurboCodec;
 import protocoldecoder.builtin.blazor.BlazorDecoder;
 import protocoldecoder.builtin.firebase.FirebaseDecoder;
 import protocoldecoder.builtin.phoenix.PhoenixDecoder;
@@ -44,6 +60,7 @@ import protocoldecoder.persistence.ConfigStore;
 import protocoldecoder.persistence.Settings;
 import protocoldecoder.rules.Rule;
 import protocoldecoder.rules.RuleSet;
+import protocoldecoder.edit.EditEngine;
 import protocoldecoder.scan.ScanEngine;
 import protocoldecoder.script.ScriptDecoder;
 import protocoldecoder.script.ScriptDefinition;
@@ -66,6 +83,7 @@ public final class App implements AutoCloseable {
     private final DecoderEngine engine = new DecoderEngine(registry, rules, overrides);
     private final ScriptSandbox sandbox = new ScriptSandbox();
     private final ScanEngine scanEngine = new ScanEngine(engine);
+    private final EditEngine editEngine = new EditEngine(scanEngine);
     private final ConfigStore config;
     private final Consumer<String> output;
     private final Consumer<String> errors;
@@ -85,6 +103,7 @@ public final class App implements AutoCloseable {
         this.settings = config.loadSettings();
         engine.setErrorLog(errors);
         scanEngine.setErrorLog(errors);
+        editEngine.setErrorLog(errors);
         sandbox.setLogSink(errors);
 
         // Registration order breaks confidence ties (earlier wins).
@@ -134,6 +153,23 @@ public final class App implements AutoCloseable {
         scanEngine.register(new FirebaseScanner());
         scanEngine.register(new BatchExecuteScanner());
         scanEngine.register(new SerializedObjectScanner());
+
+        editEngine.register(new SamlCodec());
+        editEngine.register(new SerializedObjectCodec());
+        editEngine.register(new AspNetAjaxCodec());
+        editEngine.register(new DevExpressCodec());
+        editEngine.register(new GraphQlCodec());
+        editEngine.register(new TrpcCodec());
+        editEngine.register(new NextJsCodec());
+        editEngine.register(new BatchExecuteCodec());
+        editEngine.register(new FirebaseCodec());
+        editEngine.register(new LivewireCodec());
+        editEngine.register(new GrpcCodec());
+        editEngine.register(new BlazorCodec());
+        editEngine.register(new SocketIoCodec());
+        editEngine.register(new PhoenixCodec());
+        editEngine.register(new ActionCableCodec());
+        editEngine.register(new TurboCodec());
         scanEngine.setDisabledIds(config.loadDisabledChecks());
 
         config.loadDisabled(registry);
@@ -152,6 +188,7 @@ public final class App implements AutoCloseable {
     public DecoderEngine engine() { return engine; }
     public ScriptSandbox sandbox() { return sandbox; }
     public ScanEngine scanEngine() { return scanEngine; }
+    public EditEngine editEngine() { return editEngine; }
     public Settings settings() { return settings; }
 
     public void log(String s) { output.accept(s); }

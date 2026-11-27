@@ -209,9 +209,18 @@ public final class ScanEngine {
 
     /** Protocol-aware insertion points for a request (kind REQUEST). */
     public List<InsertionPoint> insertionPoints(MessageContext request) {
+        return insertionPoints(request, true);
+    }
+
+    /**
+     * Protocol-aware insertion points for a request.
+     *
+     * @param respectToggles false to ignore the per-protocol "insertion points" switches (used by editing)
+     */
+    public List<InsertionPoint> insertionPoints(MessageContext request, boolean respectToggles) {
         List<InsertionPoint> out = new ArrayList<>();
         for (Applicable a : applicable(request)) {
-            if (!isEnabled(insertionPointsId(a.decoder().id()))) continue;
+            if (respectToggles && !isEnabled(insertionPointsId(a.decoder().id()))) continue;
             for (ProtocolScanner s : scannersFor(a.decoder().id())) {
                 try {
                     List<InsertionPoint> ips = s.insertionPoints(request, a.decoded());

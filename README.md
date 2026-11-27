@@ -7,6 +7,7 @@ For each protocol it:
 
 - **decodes** messages in a **Decoded** tab, as a tree and as text, wherever Burp shows a message (Proxy, Repeater,
   Intruder, Logger, Site map, Organizer…);
+- lets you **edit** decoded values in Repeater and Intercept, and **re-encodes** them automatically;
 - **scans** them, through passive checks, active checks and protocol-aware insertion points in Burp's scanner.
 
 Each protocol is a pluggable **decoder** (matcher + decoder) with an optional **scanner**. You can add your own
@@ -97,6 +98,34 @@ The first of these that applies wins:
 By default, the Decoded tab only appears when a decoder applies. To pick a decoder for any message, turn on
 *Settings & help → Show the Decoded tab on every message*.
 
+## Editing decoded messages
+
+In editable Burp editors (Repeater, Intercept) the Decoded tab gets an **Edit** tab. Changes are re-encoded into the
+message automatically: lengths, framing, compression, base64 and URL-encoding, JSON inside strings and so on. They
+reach Burp when you switch back to Raw/Pretty or send the request. Edits stack on top of each other, the decoded view
+refreshes after each one, and *Revert all edits* restores the original.
+
+- **Fields** list every editable value in a request, for all protocols. They come from the scanners' insertion
+  points, so a protobuf field, a DevExpress segment value, a GraphQL literal or a string inside a serialized object
+  can each be edited in place.
+- **Documents** edit a whole decoded structure as text, for requests, intercepted responses and WebSocket messages.
+  Each protocol offers its own:
+  - SAML XML (all bindings, including the IdP's auto-post form); PHP `serialize()` text, with string lengths
+    auto-fixed
+  - ASP.NET UpdatePanel deltas; ASMX/WCF JSON; the DevExpress callback outline and `/*DX*/` results
+  - GraphQL query and variables; tRPC input; Next.js Server Action arguments, router state and `__NEXT_DATA__`
+  - batchexecute RPC payloads; Firestore and Realtime Database JSON; Livewire requests and snapshots
+  - protobuf as editable text (`1: "alice"`, `2 { 3: 42 }`, `4: b"\x00"`) for gRPC, gRPC-Web, Connect and raw
+    protobuf; Blazor MessagePack as lossless JSON; Socket.IO packets; Phoenix, Action Cable and Turbo Stream messages
+- **Exact round trips.** Applying an unedited document reproduces the original bytes. Parts you don't touch keep
+  their original encoding.
+- **Signed data.** Documents whose signature or checksum an edit would break (SAML, Livewire snapshots) are marked
+  "(signed)", so you can test whether the server enforces it.
+- Truncated messages, those over the size limit, can't be edited.
+
+To support editing in your own Java decoder, implement `protocoldecoder.edit.MessageCodec` and register it with
+`editEngine.register(...)`.
+
 ## Scanner integration
 
 Protocol checks plug into Burp's scanner. The **Scan checks** tab has switches for each feature and a checkbox for
@@ -186,6 +215,7 @@ src/main/java/protocoldecoder/
   core/        MessageContext, ProtocolDecoder, DecoderRegistry, DecoderEngine (override → rule → auto), OverrideStore
   rules/       Rule, Condition, operators/fields, RuleSet
   builtin/     one package per protocol: <Name>Decoder + <Name>Scanner (+ parsers/writers)
+  edit/        EditEngine, MessageCodec/EditableDocument, MessagePatch, JSON document helpers
   scan/        ScanEngine, PassiveCheck/ActiveCheck/InsertionPoint, Finding, InsertionPoints, ScanPatterns
   script/      ScriptSandbox (Rhino), JsMessage/JsHelpers/JsConvert, ScriptDecoder, templates & API reference
   persistence/ Settings, ConfigStore, JSON codec, export bundles
@@ -193,6 +223,6 @@ src/main/java/protocoldecoder/
   burp/        Montoya entry point, editor providers, context menu, scanner/proxy adapter (BurpScanning)
 ```
 
-Run the tests with `./gradlew test` (about 600). They cover every decoder and scanner, including insertion-point
+Run the tests with `./gradlew test` (about 700). They cover every decoder and scanner, including insertion-point
 round trips and active checks against a fake HTTP sender, plus the rule engine, the sandbox security tests, the
 example script and a headless smoke test of the Swing UI.

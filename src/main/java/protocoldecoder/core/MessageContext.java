@@ -226,6 +226,71 @@ public final class MessageContext {
         }
     }
 
+    /**
+     * Returns a copy with the displayed part replaced. For REQUEST the request body/query/headers change, for RESPONSE
+     * the response body/headers, for WEBSOCKET the payload (query/headers then refer to the upgrade request and are
+     * ignored). Null arguments leave that piece unchanged.
+     *
+     * @param headers headers to set (replacing any existing header of the same name, case-insensitive), or null
+     */
+    public MessageContext patched(byte[] newBody, String newQuery, java.util.Map<String, String> headers) {
+        Builder b = new Builder(kind);
+        b.method = method;
+        b.host = host;
+        b.path = path;
+        b.query = query;
+        b.url = url;
+        b.statusCode = statusCode;
+        b.requestBody = requestBody;
+        b.responseBody = responseBody;
+        b.webSocketDirection = webSocketDirection;
+        b.webSocketPayload = webSocketPayload;
+        b.truncated = truncated;
+        List<Header> req = new ArrayList<>(requestHeaders);
+        List<Header> resp = responseHeaders == null ? null : new ArrayList<>(responseHeaders);
+        switch (kind) {
+            case REQUEST -> {
+                if (newBody != null) b.requestBody = newBody;
+                if (newQuery != null) {
+                    b.query = newQuery;
+                    int q = url.indexOf('?');
+                    String base = q < 0 ? url : url.substring(0, q);
+                    b.url = newQuery.isEmpty() ? base : base + "?" + newQuery;
+                }
+                if (headers != null) req = setHeaders(req, headers);
+            }
+            case RESPONSE -> {
+                if (newBody != null) b.responseBody = newBody;
+                if (headers != null) resp = setHeaders(resp == null ? new ArrayList<>() : resp, headers);
+            }
+            case WEBSOCKET -> {
+                if (newBody != null) b.webSocketPayload = newBody;
+            }
+        }
+        b.requestHeaders.addAll(req);
+        b.responseHeaders = resp;
+        return b.build();
+    }
+
+    private static List<Header> setHeaders(List<Header> list, java.util.Map<String, String> set) {
+        List<Header> out = new ArrayList<>(list);
+        for (java.util.Map.Entry<String, String> e : set.entrySet()) {
+            boolean done = false;
+            for (int i = 0; i < out.size(); i++) {
+                if (out.get(i).name().equalsIgnoreCase(e.getKey())) {
+                    if (!done) {
+                        out.set(i, new Header(out.get(i).name(), e.getValue()));
+                        done = true;
+                    } else {
+                        out.remove(i--);
+                    }
+                }
+            }
+            if (!done) out.add(new Header(e.getKey(), e.getValue()));
+        }
+        return out;
+    }
+
     /** Returns a copy of this context presenting a different part of the same exchange. */
     public MessageContext withKind(MessageKind newKind) {
         Builder b = new Builder(newKind);

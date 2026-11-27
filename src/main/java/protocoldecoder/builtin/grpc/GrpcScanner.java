@@ -271,7 +271,7 @@ public final class GrpcScanner implements ProtocolScanner {
     }
 
     /** Re-applies an HTTP Content-Encoding; null if the encoding cannot be reproduced. */
-    private static Function<byte[], byte[]> contentEncoder(String ce) {
+    static Function<byte[], byte[]> contentEncoder(String ce) {
         if (!hasEncoding(ce)) return b -> b;
         String e = ce.trim().toLowerCase(Locale.ROOT);
         if (e.equals("gzip") || e.equals("x-gzip")) return GrpcScanner::gzip;
@@ -280,7 +280,7 @@ public final class GrpcScanner implements ProtocolScanner {
     }
 
     /** Compressor matching the per-message encoding, mirroring {@link GrpcFrames#decompress}; null if unsupported. */
-    private static Function<byte[], byte[]> messageCompressor(String encoding, byte[] original) {
+    static Function<byte[], byte[]> messageCompressor(String encoding, byte[] original) {
         String enc = encoding == null ? "" : encoding.trim().toLowerCase(Locale.ROOT);
         if (enc.equals("gzip") || (enc.isEmpty() || enc.equals("identity")) && Codecs.isGzip(original)) return GrpcScanner::gzip;
         if (enc.equals("deflate") || (enc.isEmpty() && Codecs.isZlib(original))) return GrpcScanner::zlib;

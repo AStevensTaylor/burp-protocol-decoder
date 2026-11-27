@@ -614,7 +614,7 @@ public final class SerializedObjectScanner implements ProtocolScanner {
      * Layers to restore for this location. Raw PHP text in a cookie is percent-encoded (as PHP's setcookie does) so
      * that ';' and quotes in payloads cannot break the header; raw text in other headers is not supported.
      */
-    private static List<Wrapping.Layer> layersFor(Value v, Wrapping.Peeled p) {
+    static List<Wrapping.Layer> layersFor(Value v, Wrapping.Peeled p) {
         List<Wrapping.Layer> layers = p.layers();
         boolean textSafe = !layers.isEmpty() && layers.get(0).kind() != Wrapping.Kind.GZIP;
         if (textSafe || v.loc() == Loc.BODY || v.loc() == Loc.QUERY || v.loc() == Loc.FORM) return layers;
@@ -628,7 +628,7 @@ public final class SerializedObjectScanner implements ProtocolScanner {
     }
 
     /** Function from the new encoded value to the complete new content of the request part. */
-    private static Function<byte[], byte[]> placer(MessageContext m, Value v) {
+    static Function<byte[], byte[]> placer(MessageContext m, Value v) {
         switch (v.loc()) {
             case QUERY, FORM -> {
                 String all = v.loc() == Loc.QUERY ? m.query() : m.requestBodyText();

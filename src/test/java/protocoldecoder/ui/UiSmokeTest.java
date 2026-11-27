@@ -86,6 +86,57 @@ class UiSmokeTest {
     }
 
     @Test
+    void editTabReencodesAndReverts() throws Exception {
+        MessageDecodePanel[] holder = new MessageDecodePanel[1];
+        int[] notified = {0};
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new MessageDecodePanel(app, UiEnv.standalone(), true);
+            holder[0].setEditListener(() -> notified[0]++);
+        });
+        MessageDecodePanel p = holder[0];
+        MessageContext m = MessageContext.builder(MessageKind.REQUEST).method("POST").url("https://shop.example.com/Orders.aspx")
+                .requestHeader("Content-Type", "application/x-www-form-urlencoded")
+                .requestBody("__CALLBACKID=ctl00%24Main%24ASPxGridView1&__CALLBACKPARAM=c0%3AKV%7C2%3B%5B%5D%3BGB%7C20%3B12%7CPAGERONCLICK3%7CPN1%3B")
+                .build();
+        SwingUtilities.invokeAndWait(() -> p.setMessage(m));
+        await(p);
+        int[] row = {-1};
+        SwingUtilities.invokeAndWait(() -> {
+            EditPanel e = p.editPanel();
+            assertTrue(e.fieldCount() >= 3, "fields: " + e.fieldCount());
+            for (int i = 0; i < e.fieldCount(); i++) if (e.field(i).name().endsWith("GB[1]")) row[0] = i;
+            assertTrue(row[0] >= 0);
+            assertFalse(p.hasEdits());
+            e.editField(row[0], "PN7");
+        });
+        for (int i = 0; i < 200 && !p.hasEdits(); i++) TimeUnit.MILLISECONDS.sleep(20);
+        assertTrue(p.hasEdits());
+        assertTrue(new String(p.edits().body(), java.nio.charset.StandardCharsets.ISO_8859_1).contains("3%7CPN7%3B"));
+        assertEquals(1, notified[0]);
+        // decoded view shows the edited message
+        for (int i = 0; i < 200; i++) {
+            String[] text = new String[1];
+            SwingUtilities.invokeAndWait(() -> text[0] = p.view().fullText());
+            if (text[0].contains("PN7")) break;
+            TimeUnit.MILLISECONDS.sleep(20);
+        }
+        String[] text = new String[1];
+        SwingUtilities.invokeAndWait(() -> text[0] = p.view().fullText());
+        assertTrue(text[0].contains("PN7"), text[0]);
+        SwingUtilities.invokeAndWait(() -> p.showEditTabForTest());
+        snapshot(p, "edit-tab.png", 1100, 560);
+        SwingUtilities.invokeAndWait(() -> p.editPanel().onRevertForTest());
+        assertFalse(p.hasEdits());
+    }
+
+    @Test
+    void readOnlyPanelHasNoEditTab() throws Exception {
+        MessageDecodePanel[] holder = new MessageDecodePanel[1];
+        SwingUtilities.invokeAndWait(() -> holder[0] = new MessageDecodePanel(app, UiEnv.standalone()));
+        assertNull(holder[0].editPanel());
+    }
+
+    @Test
     void mainTabBuildsWithScripts() throws Exception {
         int before = app.registry().all().size();
         assertNull(app.saveScript(null, ScriptDefinition.newFromTemplate().id("my-rpc").name("My RPC")));
