@@ -100,7 +100,9 @@ class EditEngineTest {
             }
         });
         MessageContext m = dx("c0:GB|3;1|a;");
-        List<EditEngine.Document> docs = app.editEngine().documents(m);
+        // the built-in DevExpressCodec contributes its own document too; keep only the test codec's
+        List<EditEngine.Document> docs = app.editEngine().documents(m).stream()
+                .filter(d -> d.document().title().equals("__CALLBACKPARAM (raw)")).toList();
         assertEquals(1, docs.size());
         assertEquals("c0:GB|3;1|a;", docs.get(0).document().text());
         MessageContext edited = EditEngine.encode(docs.get(0), "c0:GB|3;1|b;").applyTo(m);
